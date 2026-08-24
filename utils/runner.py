@@ -1,4 +1,5 @@
-import shutil, subprocess
+import shutil
+import subprocess
 
 def tool_available(name: str) -> bool:
     """Returns True if a CLI tool is on PATH."""
