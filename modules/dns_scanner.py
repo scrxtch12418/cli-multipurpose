@@ -1,5 +1,6 @@
 from utils import validation, runner, formatter
 import urllib.request
+import urllib.error
 import json
 import socket
 
