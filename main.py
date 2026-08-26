@@ -8,8 +8,8 @@ def main():
         print("Select a module to run:")
         print("1. HTTP Headers")
         print("2. DNS Scanner")
-        print("3. Subdomain Enumeration")
-        print("4. WHOIS")
+        print("3. WHOIS")
+        print("4. Subdomain Enumeration")
         print("5. Exit")
         choice = input("Enter your choice: ").strip().lower()
 
