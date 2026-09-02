@@ -1,5 +1,5 @@
 from utils import formatter
-from modules import http_headers, dns_scanner, subdomain_enum, whois
+from modules import http_headers, dns_scanner, subdomain_enum, whois, port_scanner
 
 def main():
     formatter.banner("CLI Multipurpose Tool")
@@ -10,7 +10,8 @@ def main():
         print("2. DNS Scanner")
         print("3. WHOIS")
         print("4. Subdomain Enumeration")
-        print("5. Exit")
+        print("5. Port Scanner")
+        print("6. Exit")
         choice = input("Enter your choice: ").strip().lower()
 
         if choice == "1":
@@ -21,6 +22,8 @@ def main():
             whois.run()
         elif choice == "4":
             subdomain_enum.run()
+        elif choice == "5":
+            port_scanner.run()
 
         elif choice in ["exit", "quit"]:
             print("Exiting...")
