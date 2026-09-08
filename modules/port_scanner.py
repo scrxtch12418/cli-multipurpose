@@ -1,6 +1,5 @@
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tokenize import tabsize
 from utils import validation, formatter, runner
 
 ports = {
