@@ -1,5 +1,5 @@
 from utils import formatter
-from modules import http_headers, dns_scanner, subdomain_enum, whois, port_scanner
+from modules import http_headers, dns_scanner, subdomain_enum, whois, port_scanner, sql_detector, web_dir_scan
 
 def main():
     formatter.banner("CLI Multipurpose Tool")
@@ -26,6 +26,10 @@ def main():
             subdomain_enum.run()
         elif choice == "5":
             port_scanner.run()
+        elif choice == "6":
+            sql_detector.run()
+        elif choice == "7":
+            web_dir_scan.run()
 
         elif choice in ["exit", "quit"]:
             print("Exiting...")
