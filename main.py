@@ -11,7 +11,9 @@ def main():
         print("3. WHOIS")
         print("4. Subdomain Enumeration")
         print("5. Port Scanner")
-        print("6. Exit")
+        print("6.SQL Injections")
+        print("7.Web Directory Scanner")
+        print("8. Exit")
         choice = input("Enter your choice: ").strip().lower()
 
         if choice == "1":
