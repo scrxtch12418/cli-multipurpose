@@ -1,74 +1,140 @@
+"""
+WHOIS & RDAP Domain Registration Information Scanner.
+Retrieves registrar, registration/expiration dates, and status via RDAP (RFC 7480) or whois CLI.
+Implements WhoisScanner(BaseScanner) and interactive run().
+"""
+
+import json
 import urllib.request
 import urllib.error
-import json
+from typing import Optional, Dict, Any
+
+from core.base_scanner import BaseScanner
+from core.models import ScanResult, ScanStatus, Finding, Evidence, Severity, Confidence
+from core.scope import ScopePolicy
 from utils import validation, runner, formatter
 
+
+def query_rdap(domain: str, timeout: int = 10) -> Dict[str, Any]:
+    """Queries RDAP protocol over HTTPS for domain registration data."""
+    url = f"https://rdap.org/domain/{domain}"
+    req = urllib.request.Request(url, headers={"User-Agent": "CLI-Multipurpose-Security/2.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode(errors="ignore"))
+
+
+class WhoisScanner(BaseScanner):
+    scanner_id = "whois"
+    name = "WHOIS / RDAP Domain Scanner"
+    description = "Queries domain registration details, registrar, creation, and expiration dates."
+    category = "dns"
+    is_active = False
+
+    def run(self, target: str, scope: ScopePolicy, config: Optional[Dict[str, Any]] = None) -> ScanResult:
+        result = ScanResult(
+            scanner_id=self.scanner_id,
+            scanner_version=self.version,
+            target=target
+        )
+
+        in_scope, reason = scope.is_target_in_scope(target)
+        if not in_scope:
+            result.add_error(f"Target '{target}' is out of scope: {reason}")
+            result.finish(ScanStatus.SKIPPED)
+            return result
+
+        info = validation.parse_target(target)
+        domain = info.host if info else target
+
+        if not validation.is_valid_domain(domain):
+            result.add_error(f"Target '{domain}' is not a valid domain name for WHOIS lookup.")
+            result.finish(ScanStatus.FAILED)
+            return result
+
+        data = {}
+        # Try whois binary if available
+        if runner.tool_available("whois"):
+            whois_res = runner.run_tool_result(["whois", domain], timeout=scope.timeout_seconds)
+            if whois_res.succeeded and whois_res.stdout.strip():
+                data["raw_whois"] = whois_res.stdout[:2000]
+
+        # RDAP fallback / enrichment
+        try:
+            rdap_data = query_rdap(domain, timeout=scope.timeout_seconds)
+            data["rdap"] = rdap_data
+        except Exception as e:
+            result.add_warning(f"RDAP query failed: {e}")
+
+        if not data:
+            result.add_error("Could not obtain WHOIS or RDAP records.")
+            result.finish(ScanStatus.FAILED)
+            return result
+
+        result.metadata = data
+        rdap = data.get("rdap", {})
+        registrar = "Unknown"
+        events = rdap.get("events", [])
+        created = "Unknown"
+        expires = "Unknown"
+
+        for entity in rdap.get("entities", []):
+            if "registrar" in entity.get("roles", []):
+                vcard = entity.get("vcardArray", [])
+                if len(vcard) > 1:
+                    for prop in vcard[1]:
+                        if prop[0] == "fn":
+                            registrar = prop[3]
+                            break
+
+        for ev in events:
+            act = ev.get("eventAction")
+            dt = ev.get("eventDate", "").replace("T", " ").replace("Z", "")
+            if act == "registration":
+                created = dt
+            elif act == "expiration":
+                expires = dt
+
+        summary_val = f"Registrar: {registrar} | Created: {created} | Expires: {expires}"
+        result.add_finding(Finding(
+            check_id="whois.registration_info",
+            title=f"Domain Registration Info for {domain}",
+            description=f"Domain registered via {registrar}. Expires: {expires}.",
+            severity=Severity.INFO,
+            confidence=Confidence.CONFIRMED,
+            affected_asset=domain,
+            remediation="Ensure domain contact information is protected and auto-renewal is enabled.",
+            evidence=[Evidence(
+                source="whois",
+                description="WHOIS/RDAP registration metadata",
+                sanitized_value=summary_val
+            )]
+        ))
+
+        result.finish(ScanStatus.SUCCESS)
+        return result
+
+
 def run():
-    target = input("Enter target domain or URL: ").strip()
-    clean_target = target.replace("http://", "").replace("https://", "").split("/")[0]
-    
-    if not validation.is_valid_domain(clean_target):
-        formatter.error("Please enter a valid domain name (WHOIS lookups require domains).")
+    """Interactive CLI entrypoint."""
+    target = input("Enter target domain: ").strip()
+    info = validation.parse_target(target)
+    domain = info.host if info else target
+
+    if not validation.is_valid_domain(domain):
+        formatter.error("Please enter a valid domain name.")
         return
 
-    if runner.tool_available("whois"):
-        formatter.info("Using whois command-line tool.")
-        output = runner.run_tool(["whois", clean_target])
-        if output.strip():
-            print(output)
-        else:
-            formatter.error("whois returned no information.")
-    else:
-        formatter.info("Using native RDAP API (HTTPS fallback).")
-        url = f"https://rdap.org/domain/{clean_target}"
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "Mozilla/5.0")  # Avoid being blocked
-        
-        try:
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode())
-                
-                # Print the domain name
-                domain_name = data.get("ldhName", clean_target).upper()
-                print(f"\n{formatter.BOLD}{formatter.CYAN}--- WHOIS/RDAP: {domain_name} ---{formatter.RESET}\n")
-                
-                # 1. Get Registrar
-                registrar = "Unknown"
-                entities = data.get("entities", [])
-                for entity in entities:
-                    roles = entity.get("roles", [])
-                    if "registrar" in roles:
-                        # Find public name in vcardArray
-                        vcard = entity.get("vcardArray", [])
-                        if len(vcard) > 1:
-                            for prop in vcard[1]:
-                                if prop[0] == "fn":
-                                    registrar = prop[3]
-                                    break
-                formatter.success(f"Registrar: {registrar}")
-                
-                # 2. Get Dates (Creation, Expiry, Last Updated)
-                events = data.get("events", [])
-                for event in events:
-                    action = event.get("eventAction", "")
-                    date = event.get("eventDate", "").replace("T", " ").replace("Z", "")
-                    
-                    if action == "registration":
-                        formatter.success(f"Created On: {date}")
-                    elif action == "expiration":
-                        formatter.success(f"Expires On: {date}")
-                    elif action == "last update of rdap database":
-                        formatter.info(f"Last Updated: {date}")
-                        
-                # 3. Get Status
-                status = data.get("status", [])
-                if status:
-                    formatter.info(f"Domain Status: {', '.join(status)}")
-                    
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                formatter.error("Domain registration not found (may be unregistered or unsupported TLD).")
-            else:
-                formatter.error(f"RDAP lookup failed with HTTP error: {e.code}")
-        except Exception as e:
-            formatter.error(f"RDAP lookup failed: {e}")
+    formatter.info(f"Looking up registration info for: {domain}")
+    scope = ScopePolicy.create_single_target_scope(domain)
+    scanner = WhoisScanner()
+    res = scanner.run(domain, scope)
+
+    if res.errors:
+        for err in res.errors:
+            formatter.error(err)
+        return
+
+    for f in res.findings:
+        formatter.success(f.title)
+        for ev in f.evidence:
+            formatter.info(ev.sanitized_value)

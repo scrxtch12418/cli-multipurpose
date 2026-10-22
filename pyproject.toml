@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-multipurpose"
+version = "2.0.0"
+description = "A reliable, modular, extensible security assessment and reconnaissance CLI coordinating native Python checks and specialist tools."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "CLI Multipurpose Contributors"}
+]
+keywords = ["security", "pentesting", "reconnaissance", "scanner", "cli", "audit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+cli-multipurpose = "main:cli_main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "modules*", "utils*", "reports*"]
